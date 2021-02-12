@@ -9,30 +9,15 @@ import net.dv8tion.jda.api.entities.*;
 import net.dv8tion.jda.api.events.message.MessageReceivedEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
 import net.dv8tion.jda.api.requests.GatewayIntent;
-import net.dv8tion.jda.internal.requests.Route;
 import sheets.Auth;
 
 import java.io.IOException;
 import java.security.GeneralSecurityException;
 import java.util.List;
-import java.util.Objects;
 
 public class MazcabAcademyBot extends ListenerAdapter {
 
     public static List<List<Object>> values;
-
-    public MazcabAcademyBot( ) throws IOException, GeneralSecurityException {
-        NetHttpTransport HTTP_TRANSPORT = GoogleNetHttpTransport.newTrustedTransport();
-
-        final String range = "Sheet1!E2:E";
-        Sheets service = new Sheets.Builder(HTTP_TRANSPORT, Auth.JSON_FACTORY, Auth.getCredentials(HTTP_TRANSPORT))
-                .setApplicationName(Auth.APPLICATION_NAME)
-                .build();
-        ValueRange response = service.spreadsheets().values()
-                .get(Token.SPREADSHEET_ID, range)
-                .execute();
-        values = response.getValues();
-    }
 
     public static void main(String[] args) throws IOException, GeneralSecurityException {
 
@@ -58,6 +43,32 @@ public class MazcabAcademyBot extends ListenerAdapter {
     public void onMessageReceived(MessageReceivedEvent event) {
         Message msg = event.getMessage();
         if (msg.getContentRaw().equals("!refresh") && event.getChannel().getName().equalsIgnoreCase("bot-testing")) { // Wait for command and make sure you're in the right channel
+
+            NetHttpTransport HTTP_TRANSPORT = null;
+            try {
+                HTTP_TRANSPORT = GoogleNetHttpTransport.newTrustedTransport();
+            } catch (Throwable e) {
+            }
+
+            final String range = "Sheet1!E2:E";
+            Sheets service = null;
+            try {
+                service = new Sheets.Builder(HTTP_TRANSPORT, Auth.JSON_FACTORY, Auth.getCredentials(HTTP_TRANSPORT))
+                        .setApplicationName(Auth.APPLICATION_NAME)
+                        .build();
+            } catch (Throwable e) {
+            }
+
+            ValueRange response = null;
+            try {
+                response = service.spreadsheets().values()
+                        .get(Token.SPREADSHEET_ID, range)
+                        .execute();
+            } catch (Throwable e) {
+            }
+            values = response.getValues();
+
+
             MessageChannel channel = event.getChannel();
             List<Message> messages = channel.getHistory().retrievePast(100).complete();
 
