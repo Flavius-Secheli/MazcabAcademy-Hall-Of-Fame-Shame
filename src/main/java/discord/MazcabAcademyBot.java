@@ -9,9 +9,9 @@ import net.dv8tion.jda.api.entities.*;
 import net.dv8tion.jda.api.events.message.MessageReceivedEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
 import net.dv8tion.jda.api.requests.GatewayIntent;
+import net.dv8tion.jda.api.utils.MemberCachePolicy;
 import sheets.Auth;
 
-import java.io.IOException;
 import java.security.GeneralSecurityException;
 import java.util.List;
 
@@ -19,9 +19,10 @@ public class MazcabAcademyBot extends ListenerAdapter {
 
     public static List<List<Object>> values;
 
-    public static void main(String[] args) throws IOException, GeneralSecurityException {
-
-        JDABuilder.createLight(Token.TOKEN, GatewayIntent.GUILD_MESSAGES, GatewayIntent.DIRECT_MESSAGES)
+    public static void main(String[] args) throws GeneralSecurityException {
+        JDABuilder.createLight(Token.TOKEN, GatewayIntent.GUILD_MESSAGES, GatewayIntent.DIRECT_MESSAGES, GatewayIntent.GUILD_MEMBERS)
+                .setMemberCachePolicy(MemberCachePolicy.ALL)
+                .enableIntents(GatewayIntent.GUILD_MEMBERS)
                 .addEventListeners(new MazcabAcademyBot())
                 .setActivity(Activity.playing("Type !refresh"))
                 .build();
@@ -42,8 +43,9 @@ public class MazcabAcademyBot extends ListenerAdapter {
 
     public void onMessageReceived(MessageReceivedEvent event) {
         Message msg = event.getMessage();
-        if (msg.getContentRaw().equals("!refresh") && event.getChannel().getName().equalsIgnoreCase("bot-testing")) { // Wait for command and make sure you're in the right channel
 
+        // Wait for command and make sure you're in the right channel
+        if (msg.getContentRaw().equals("!refresh") && event.getChannel().getName().equalsIgnoreCase(constants.CHANNEL_NAME)) {
             NetHttpTransport HTTP_TRANSPORT = null;
             try {
                 HTTP_TRANSPORT = GoogleNetHttpTransport.newTrustedTransport();
@@ -72,28 +74,30 @@ public class MazcabAcademyBot extends ListenerAdapter {
             MessageChannel channel = event.getChannel();
             List<Message> messages = channel.getHistory().retrievePast(100).complete();
 
-            // Id the Bm and Yaka roles
-            Role bmPro = event.getGuild().getRolesByName("BM PRO", true).get(0);
-            Role yakaPro = event.getGuild().getRolesByName("YAKA PRO", true).get(0);
+            Guild guild = event.getGuild();
+
+            // Remove the Yaka and BM roles from everyone
+            List<Role> goodBM = guild.getRolesByName(constants.ROLE_BM, true);
+            List<Role> goodYaka = guild.getRolesByName(constants.ROLE_YAKA, true);
+
+            List<Member> goodBMer = guild.getMembersWithRoles(goodBM.get(0));
+            for (Member member : goodBMer) {
+                guild.removeRoleFromMember(member, goodBM.get(0)).queue();
+            }
+
+            List<Member> goodYakaer = guild.getMembersWithRoles(goodYaka.get(0));
+            for (Member member : goodYakaer) {
+                guild.removeRoleFromMember(member, goodYaka.get(0)).queue();
+            }
 
             // Delete everything in the channel && remove bmPro role from everyone
             for (Message message : messages) {
-                List<User> users = message.getMentionedUsers();
-                for (User user : users) { // Remove BM & Yaka roles from everyone
-                    event.getGuild().removeRoleFromMember(user.getId(), bmPro).queue();
-                    event.getGuild().removeRoleFromMember(user.getId(), yakaPro).queue();
-                }
                 channel.purgeMessages(message);
                 try {
                     Thread.sleep(50); // Delete a message every 50 ms
                 } catch (InterruptedException e) {
                     e.printStackTrace();
                 }
-            }
-
-            try {
-                Thread.sleep(1000); // 1 sec break after deleting everything and removing roles
-            } catch (InterruptedException ignored) {
             }
 
             //Header - Hall of Fame
@@ -103,7 +107,7 @@ public class MazcabAcademyBot extends ListenerAdapter {
             // BM - times
             for (List row : values) {
                 if (counter > 3) break;
-                hallOfFame.append("#").append(counter).append(": **").append(row.get(0)).append("**\n"); // Chained append is optimized better
+                hallOfFame.append("#").append(counter).append(": **").append(row.get(0)).append("**\n");
                 counter++;
             }
 
@@ -134,7 +138,7 @@ public class MazcabAcademyBot extends ListenerAdapter {
 
             channel.sendMessage(hallOfFame.toString()).queue();
             try {
-                Thread.sleep(150); // Post Hall of Fame and take a small break
+                Thread.sleep(300); // Post Hall of Fame and take a small break
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
@@ -164,9 +168,9 @@ public class MazcabAcademyBot extends ListenerAdapter {
             hallOfShame.append("\nSlowest log completions: (Off-loot kills count as well)\n");
             hallOfShame.append(spreadsheetImport(52, 54));
 
-            channel.sendMessage(hallOfShame).queue();
+            channel.sendMessage(hallOfShame.toString()).queue();
             try {
-                Thread.sleep(1000); // Hall of shame then break
+                Thread.sleep(300); // Hall of shame then break
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
@@ -177,40 +181,65 @@ public class MazcabAcademyBot extends ListenerAdapter {
 
             // Best BM team
             bestBMTeam.append(spreadsheetImport(56, 65));
-            channel.sendMessage(bestBMTeam).queue();
+
+            channel.sendMessage(bestBMTeam.toString()).queue();
             try {
-                Thread.sleep(1300); // Post team, wait and then retrieve the mentioned members
+                Thread.sleep(2000); // Post team, wait and then retrieve the mentioned members
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
-            List<Message> bmProsMessage = channel.getHistory().retrievePast(1).complete();
-            List<User> bmPros = bmProsMessage.get(0).getMentionedUsers();
-            for (User user : bmPros) { // Add bm role to everyone
-                event.getGuild().addRoleToMember(user.getId(), bmPro).queue();
+
+            // Get everyone mentioned in the last message and add them the bm role
+            Message message = channel.getHistory().retrievePast(1).complete().get(0);
+            List<User> bmPros = message.getMentionedUsers();
+            for (User user : bmPros) {
+                try {
+                    Thread.sleep(500);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+                guild.addRoleToMember(user.getId(), goodBM.get(0)).queue();
             }
 
             try {
-                Thread.sleep(150); // Wait a small fraction of a sec
+                Thread.sleep(300); // Wait a small fraction of a sec
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
+
             // Best Yaka team
             StringBuilder bestYakaTeam = new StringBuilder("---------------------------------------\n\n" +
                     ":trophy: :medal:** Record holding Yakamaru team **:medal: :trophy: \n\n");
 
             bestYakaTeam.append(spreadsheetImport(68, 77));
-            channel.sendMessage(bestYakaTeam).queue();
+
+            channel.sendMessage(bestYakaTeam.toString()).queue();
             try {
-                Thread.sleep(1000); // Post message and wait a sec. Then retrieve mentioned members and give them the tag
+                Thread.sleep(2000); // Post message and wait a bit. Then retrieve mentioned members and give them the tag
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
 
-            List<Message> yakaProsMessage = channel.getHistory().retrievePast(1).complete();
-            List<User> yakaPros = yakaProsMessage.get(0).getMentionedUsers();
+            // Get everyone mention and blah, blah, blah (Read line 190)
+            List<User> yakaPros = message.getMentionedUsers();
             for (User user : yakaPros) {
-                event.getGuild().addRoleToMember(user.getId(), yakaPro).queue();
+                try {
+                    Thread.sleep(500);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+                guild.addRoleToMember(user.getId(), goodYaka.get(0)).queue();
             }
+
+            channel.sendMessage("Processing done!").queue();
+            try {
+                Thread.sleep(2000);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+
+            channel.purgeMessages(channel.getHistory().retrievePast(1).complete());
+
         }
     }
 }
